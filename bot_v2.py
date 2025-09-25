@@ -567,6 +567,40 @@ async def cooldown(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await set_cooldown(update.effective_chat.id, mins)
     await update.message.reply_text(f"⏱️ Enfriamiento entre avisos: {mins} min")
 
+async def subscribe_league_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+
+    if not context.args:
+        await update.message.reply_text("Uso: /subscribe_league_id <ID>")
+        return
+
+    league_id = context.args[0]
+
+    # Intentamos buscar la liga en la API para confirmar
+    api: SportsAPI = context.application.bot_data["sports_api"]
+    try:
+        data = await api._get("/leagues", {"id": league_id})
+        leagues = data.get("response", [])
+        if not leagues:
+            await update.message.reply_text(f"No encontré ninguna liga con ID {league_id}.")
+            return
+        league_name = leagues[0]["league"]["name"]
+        country = leagues[0]["country"]["name"]
+    except Exception:
+        await update.message.reply_text("Error al consultar la API. Verifica el ID.")
+        return
+
+    # Guardamos en la base de datos
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "INSERT INTO subscriptions (chat_id, target_type, target_id, target_name) VALUES (?, 'league', ?, ?)",
+            (chat_id, league_id, f"{league_name} ({country})"),
+        )
+        await db.commit()
+
+    await update.message.reply_text(f"✅ Suscrito a la liga: {league_name} ({country}) [ID {league_id}]")
+
+
 # ---------- Evaluación de reglas ----------
 def minute_based_checks(ev: Event, rules: Set[str]) -> bool:
     if ev.minute is None or ev.minute < 60:
@@ -765,6 +799,8 @@ def main():
 
     application.add_handler(CommandHandler("quiet", quiet))
     application.add_handler(CommandHandler("cooldown", cooldown))
+    application.add_handler(CommandHandler("subscribe_league_id", subscribe_league_id))
+
 
     if application.job_queue is None:
         jq = JobQueue()
