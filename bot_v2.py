@@ -571,34 +571,58 @@ async def subscribe_league_id(update: Update, context: ContextTypes.DEFAULT_TYPE
     chat_id = update.effective_chat.id
 
     if not context.args:
-        await update.message.reply_text("Uso: /subscribe_league_id <ID>")
+        await update.message.reply_text("Uso: /subscribe_league_id <ID>  (ej. 140 para La Liga)")
         return
 
-    league_id = context.args[0]
-
-    # Intentamos buscar la liga en la API para confirmar
+    league_id_text = context.args[0].strip()
     api: SportsAPI = context.application.bot_data["sports_api"]
+
+    # 1) Intento directo por ID
     try:
-        data = await api._get("/leagues", {"id": league_id})
+        data = await api._get("/leagues", {"id": league_id_text})
         leagues = data.get("response", [])
-        if not leagues:
-            await update.message.reply_text(f"No encontré ninguna liga con ID {league_id}.")
-            return
-        league_name = leagues[0]["league"]["name"]
-        country = leagues[0]["country"]["name"]
     except Exception:
-        await update.message.reply_text("Error al consultar la API. Verifica el ID.")
+        leagues = []
+
+    # 2) Si no hubo resultados, intento por ID + temporada actual
+    if not leagues:
+        # temporada “europea” estimada (igual que usa la clase)
+        today = datetime.now(TZ).date()
+        season = today.year - 1 if today.month < 7 else today.year
+        try:
+            data2 = await api._get("/leagues", {"id": league_id_text, "season": season})
+            leagues = data2.get("response", [])
+        except Exception:
+            leagues = []
+
+    # 3) Si SIGUE sin resultados y lo que pusiste no es número, pruebo búsqueda por nombre
+    if not leagues and not league_id_text.isdigit():
+        try:
+            data3 = await api._get("/leagues", {"search": league_id_text})
+            leagues = data3.get("response", [])
+        except Exception:
+            leagues = []
+
+    if not leagues:
+        await update.message.reply_text(f"No encontré liga con '{league_id_text}'. Prueba con el nombre exacto o revisa el ID (v3).")
         return
 
-    # Guardamos en la base de datos
+    # Tomo la primera coincidencia
+    league = leagues[0]["league"]
+    country = leagues[0]["country"]
+    league_id = str(league["id"])
+    league_name = league["name"]
+    country_name = country.get("name") or "N/A"
+
+    # Guardar suscripción
     async with aiosqlite.connect(DB_PATH) as db:
         await db.execute(
-            "INSERT INTO subscriptions (chat_id, target_type, target_id, target_name) VALUES (?, 'league', ?, ?)",
-            (chat_id, league_id, f"{league_name} ({country})"),
+            "INSERT OR IGNORE INTO subscriptions (chat_id, target_type, target_id, target_name) VALUES (?, 'league', ?, ?)",
+            (chat_id, league_id, f"{league_name} ({country_name})"),
         )
         await db.commit()
 
-    await update.message.reply_text(f"✅ Suscrito a la liga: {league_name} ({country}) [ID {league_id}]")
+    await update.message.reply_text(f"✅ Suscrito a: {league_name} ({country_name}) [ID {league_id}]")
 
 
 # ---------- Evaluación de reglas ----------
