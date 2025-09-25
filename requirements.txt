@@ -1,0 +1,5 @@
+python-telegram-bot[rate-limiter,job-queue]==21.4
+aiosqlite
+aiohttp
+pytz
+tzdata
