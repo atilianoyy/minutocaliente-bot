@@ -625,6 +625,55 @@ async def subscribe_league_id(update: Update, context: ContextTypes.DEFAULT_TYPE
     await update.message.reply_text(f"✅ Suscrito a: {league_name} ({country_name}) [ID {league_id}]")
 
 
+async def find_league(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Uso: /find_league <texto>\nEj: /find_league premier")
+        return
+
+    query = " ".join(context.args).strip()
+    api = context.application.bot_data.get("sports_api")
+
+    # Si estás en modo MOCK (sin API real), avisamos
+    if not hasattr(api, "_get"):
+        await update.message.reply_text(
+            "Estás en modo MOCK (sin API real). Prueba en producción con APISPORTS_KEY.\n"
+            "Ejemplos de nombre/ID v3 conocidos:\n"
+            "• La Liga (Spain) — ID 140\n"
+            "• Premier League (England) — ID 39\n"
+            "• Serie A (Italy) — ID 135\n"
+            "• Bundesliga (Germany) — ID 78\n"
+            "• Ligue 1 (France) — ID 61\n"
+            "• UEFA Champions League — ID 2\n"
+            "Usa: /subscribe_league_id <ID>"
+        )
+        return
+
+    # Consulta a la API v3
+    try:
+        data = await api._get("/leagues", {"search": query})
+        items = data.get("response", [])
+    except Exception:
+        await update.message.reply_text("No pude consultar la API ahora mismo. Inténtalo en un momento.")
+        return
+
+    if not items:
+        await update.message.reply_text("No encontré ligas con esa búsqueda. Prueba otro nombre o añade el país (ej: premier england).")
+        return
+
+    # Preparamos la lista (máximo 20 para no saturar)
+    lines = ["Resultados de liga:"]
+    for it in items[:20]:
+        lg = it.get("league", {})
+        ct = it.get("country", {})
+        name = lg.get("name", "¿?")
+        lid = lg.get("id")
+        country = ct.get("name", "¿?")
+        lines.append(f"• {name} ({country}) — ID {lid}")
+
+    lines.append("\n👉 Suscríbete con: /subscribe_league_id <ID>")
+    await update.message.reply_text("\n".join(lines))
+
+
 # ---------- Evaluación de reglas ----------
 def minute_based_checks(ev: Event, rules: Set[str]) -> bool:
     if ev.minute is None or ev.minute < 60:
@@ -824,6 +873,7 @@ def main():
     application.add_handler(CommandHandler("quiet", quiet))
     application.add_handler(CommandHandler("cooldown", cooldown))
     application.add_handler(CommandHandler("subscribe_league_id", subscribe_league_id))
+    application.add_handler(CommandHandler("find_league", find_league))
 
 
     if application.job_queue is None:
