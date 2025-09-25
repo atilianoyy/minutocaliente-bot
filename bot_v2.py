@@ -28,7 +28,7 @@ from telegram.ext import (
 )
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-CHECK_INTERVAL_MIN = 2          # frecuencia del JobQueue (min)
+CHECK_INTERVAL_MIN = 10          # frecuencia del JobQueue (min)
 NOTIFY_BEFORE_MIN = 10          # aviso previo al inicio del partido (min)
 DB_PATH = "subs_v2.db"
 
